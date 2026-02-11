@@ -1,0 +1,119 @@
+{
+  "project_info": {
+    "project_number": "820807654137",
+    "firebase_url": "https://myappointment-6843e-default-rtdb.firebaseio.com",
+    "project_id": "myappointment-6843e",
+    "storage_bucket": "myappointment-6843e.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:820807654137:android:826efe1c4c0fddce14e028",
+        "android_client_info": {
+          "package_name": "com.example.appoinment"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "820807654137-76gsr088cf0shkl6gkqns21rudukf9c1.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyD472cQBOhce6G2XswCb7ngQC2X9urDvdY"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "820807654137-76gsr088cf0shkl6gkqns21rudukf9c1.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "820807654137-ahh7ejdkruhafk39mp3kkjijdhc6rsla.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.welltime.myappointment.myAppointment"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:820807654137:android:66717c73aca1615a14e028",
+        "android_client_info": {
+          "package_name": "com.we"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "820807654137-76gsr088cf0shkl6gkqns21rudukf9c1.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyD472cQBOhce6G2XswCb7ngQC2X9urDvdY"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "820807654137-76gsr088cf0shkl6gkqns21rudukf9c1.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "820807654137-ahh7ejdkruhafk39mp3kkjijdhc6rsla.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.welltime.myappointment.myAppointment"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:820807654137:android:722015b1c5412ede14e028",
+        "android_client_info": {
+          "package_name": "com.welltime.myappointment.my_appointment"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "820807654137-76gsr088cf0shkl6gkqns21rudukf9c1.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyD472cQBOhce6G2XswCb7ngQC2X9urDvdY"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "820807654137-76gsr088cf0shkl6gkqns21rudukf9c1.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "820807654137-ahh7ejdkruhafk39mp3kkjijdhc6rsla.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.welltime.myappointment.myAppointment"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

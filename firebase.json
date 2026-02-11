@@ -1,0 +1,65 @@
+{
+  "flutter": {
+    "platforms": {
+      "android": {
+        "default": {
+          "projectId": "myappointment-6843e",
+          "appId": "1:820807654137:android:722015b1c5412ede14e028",
+          "fileOutput": "android/app/google-services.json"
+        }
+      },
+      "dart": {
+        "lib/firebase_options.dart": {
+          "projectId": "myappointment-6843e",
+          "configurations": {
+            "android": "1:820807654137:android:722015b1c5412ede14e028",
+            "ios": "1:820807654137:ios:51c857457780229914e028",
+            "web": "1:820807654137:web:529f7059c56d804214e028"
+          }
+        }
+      },
+      "ios": {
+        "default": {
+          "projectId": "myappointment-6843e",
+          "appId": "1:820807654137:ios:51c857457780229914e028",
+          "uploadDebugSymbols": false,
+          "fileOutput": "ios/Runner/GoogleService-Info.plist"
+        }
+      }
+    }
+  },
+  "functions": [
+    {
+      "codebase": "default",
+      "ignore": [
+        "node_modules",
+        ".git",
+        "firebase-debug.log",
+        "firebase-debug.*.log",
+        "*.local"
+      ],
+      "source": "functions"
+    }
+  ],
+  "firestore": {
+    "database": "(default)",
+    "location": "nam5",
+    "rules": "firestore.rules",
+    "indexes": "firestore.indexes.json"
+  },
+  "hosting": {
+    "target": "aafia-site",
+    "public": "build/web",
+    "ignore": [
+      "firebase.json",
+      "**/.*",
+      "**/node_modules/**"
+    ],
+    "rewrites": [
+      {
+        "source": "**",
+        "destination": "/index.html"
+      }
+    ]
+  }
+}

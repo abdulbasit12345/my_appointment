@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CLIENT_ID</key>
+	<string>820807654137-ahh7ejdkruhafk39mp3kkjijdhc6rsla.apps.googleusercontent.com</string>
+	<key>REVERSED_CLIENT_ID</key>
+	<string>com.googleusercontent.apps.820807654137-ahh7ejdkruhafk39mp3kkjijdhc6rsla</string>
+	<key>API_KEY</key>
+	<string>AIzaSyD7Lq0dj03562sjfIwoC6662wALhBg_fLU</string>
+	<key>GCM_SENDER_ID</key>
+	<string>820807654137</string>
+	<key>PLIST_VERSION</key>
+	<string>1</string>
+	<key>BUNDLE_ID</key>
+	<string>com.welltime.myappointment.myAppointment</string>
+	<key>PROJECT_ID</key>
+	<string>myappointment-6843e</string>
+	<key>STORAGE_BUCKET</key>
+	<string>myappointment-6843e.firebasestorage.app</string>
+	<key>IS_ADS_ENABLED</key>
+	<false></false>
+	<key>IS_ANALYTICS_ENABLED</key>
+	<false></false>
+	<key>IS_APPINVITE_ENABLED</key>
+	<true></true>
+	<key>IS_GCM_ENABLED</key>
+	<true></true>
+	<key>IS_SIGNIN_ENABLED</key>
+	<true></true>
+	<key>GOOGLE_APP_ID</key>
+	<string>1:820807654137:ios:51c857457780229914e028</string>
+	<key>DATABASE_URL</key>
+	<string>https://myappointment-6843e-default-rtdb.firebaseio.com</string>
+</dict>
+</plist>

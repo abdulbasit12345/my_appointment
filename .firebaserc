@@ -1,0 +1,15 @@
+{
+  "projects": {
+    "default": "myappointment-6843e"
+  },
+  "targets": {
+    "myappointment-6843e": {
+      "hosting": {
+        "aafia-site": [
+          "aafia-myappointment"
+        ]
+      }
+    }
+  },
+  "etags": {}
+}

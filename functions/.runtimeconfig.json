@@ -1,0 +1,8 @@
+{
+  "vonage": {
+    "api_key": "YOUR_VONAGE_API_KEY_HERE",
+    "api_secret": "YOUR_VONAGE_API_SECRET_HERE",
+    "number": "+447700900000"
+  }
+}
+
