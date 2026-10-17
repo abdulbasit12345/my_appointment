@@ -107,7 +107,11 @@ class GoogleSignInService {
         'authProvider': 'google',
       };
 
-      await _firestore.collection('PatientData').doc(user.email).set(userData);
+      // merge: never wipe fields of an existing record
+      await _firestore
+          .collection('PatientData')
+          .doc(user.email)
+          .set(userData, SetOptions(merge: true));
 
       if (kDebugMode) {
         print('Patient user created in Firestore');
@@ -131,7 +135,10 @@ class GoogleSignInService {
         'authProvider': 'google',
       };
 
-      await _firestore.collection('DoctorData').doc(user.email).set(userData);
+      await _firestore
+          .collection('DoctorData')
+          .doc(user.email)
+          .set(userData, SetOptions(merge: true));
 
       if (kDebugMode) {
         print('Doctor user created in Firestore');

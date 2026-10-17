@@ -33,7 +33,22 @@ setGlobalOptions({ maxInstances: 10 });
 
 const {onCall} = require("firebase-functions/v2/https");
 const {onSchedule} = require("firebase-functions/v2/scheduler");
+const {onDocumentWritten} = require("firebase-functions/v2/firestore");
 const admin = require("firebase-admin");
+const {
+  BOOKED_STATUSES,
+  shortId,
+  parseAppointmentDateTime,
+  desiredAppointmentAt,
+  isNewCancellation,
+  selectPatientIdsAfterSlot,
+  buildSlotOfferMessages,
+  normalizePhoneNumber,
+  phoneVariations,
+  parseSmsReply,
+  buildReplyUpdate,
+  pickAppointmentForReply,
+} = require("./lib/appointments");
 
 // Initialize admin if not already initialized
 if (!admin.apps.length) {
@@ -255,48 +270,6 @@ exports.sendSmsReminder = onCall(async (request) => {
 });
 
 /**
- * Helper function to normalize phone number to E.164 format
- * Handles various formats and ensures consistent matching
- */
-function normalizePhoneNumber(phone) {
-  if (!phone) return null;
-  
-  // Remove all non-digit characters except +
-  let cleaned = phone.replace(/[^\d+]/g, '').trim();
-  
-  // If already in E.164 format (starts with +), return as is
-  if (cleaned.startsWith('+')) {
-    return cleaned;
-  }
-  
-  // If starts with 00 (international format), replace with +
-  if (cleaned.startsWith('00')) {
-    return '+' + cleaned.substring(2);
-  }
-  
-  // Handle Pakistan mobile numbers (country code 92)
-  // Pakistan mobile: 03XX XXXXXXX -> +92 3XX XXXXXXX
-  if (cleaned.startsWith('0') && cleaned.length === 11) {
-    if (cleaned.startsWith('03')) {
-      return '+92' + cleaned.substring(1);
-    }
-  }
-  
-  // If starts with 92 and is 12 digits, add +
-  if (cleaned.startsWith('92') && cleaned.length === 12) {
-    return '+' + cleaned;
-  }
-  
-  // If we can't determine, try to add + prefix if it looks valid
-  if (cleaned.length >= 10 && cleaned.length <= 15 && !cleaned.startsWith('0')) {
-    return '+' + cleaned;
-  }
-  
-  // Return original if we can't normalize
-  return phone;
-}
-
-/**
  * Helper function to log activity to DashboardMetrics
  */
 async function logActivity(message, activityType = 'sms_reply') {
@@ -317,6 +290,113 @@ async function logActivity(message, activityType = 'sms_reply') {
     // Don't fail if logging fails
   }
 }
+
+/**
+ * Offer a freed slot to app patients booked after it.
+ * Server-side replacement for the app's old client-side cancellation
+ * cascade (same FCM payload, so tapping it opens the slot claim screen).
+ * Returns the number of notifications sent.
+ */
+async function notifyPatientsOfFreedSlot(cancelledAppointmentId, cancelledData) {
+  if (!parseAppointmentDateTime(cancelledData.date, cancelledData.time)) {
+    logger.warn('Cannot offer freed slot: invalid date/time', {
+      appointmentId: cancelledAppointmentId,
+      date: cancelledData.date,
+      time: cancelledData.time,
+    });
+    return 0;
+  }
+
+  const db = admin.firestore();
+  const snapshot = await db
+    .collection('Appointments')
+    .where('status', 'in', BOOKED_STATUSES)
+    .get();
+
+  const patientIds = selectPatientIdsAfterSlot(
+    snapshot.docs.map((doc) => ({id: doc.id, data: doc.data()})),
+    cancelledAppointmentId,
+    cancelledData,
+  );
+  if (patientIds.size === 0) return 0;
+
+  const tokenDocs = await Promise.all(
+    [...patientIds].map((id) => db.collection('TokenData').doc(id).get()),
+  );
+  const tokens = [...new Set(
+    tokenDocs
+      .filter((doc) => doc.exists && doc.data().deviceToken)
+      .map((doc) => String(doc.data().deviceToken)),
+  )];
+  if (tokens.length === 0) return 0;
+
+  const messages = buildSlotOfferMessages(tokens, cancelledData);
+  let sent = 0;
+  for (let i = 0; i < messages.length; i += 500) {
+    const response = await admin.messaging().sendEach(messages.slice(i, i + 500));
+    sent += response.successCount;
+  }
+  return sent;
+}
+
+/**
+ * Runs on every write to an appointment:
+ * 1. Keeps `appointmentAt` (a Timestamp, UK clinic time) in sync with the
+ *    'dd-MM-yyyy' date and 'hh:mm a' time strings, whoever wrote them
+ *    (app, dashboard, CSV import, SMS). Removed if the strings are invalid.
+ * 2. When an appointment goes from booked to cancelled (in the app, by SMS
+ *    reply or from the dashboard), offers the freed slot to the patients
+ *    booked after it.
+ * Its own writes re-trigger it, but then nothing changes so it stops.
+ */
+exports.onAppointmentWritten = onDocumentWritten('Appointments/{appointmentId}', async (event) => {
+  const after = event.data?.after;
+  if (!after || !after.exists) return;
+
+  const appointmentId = event.params.appointmentId;
+  const afterData = after.data();
+  const beforeData = event.data.before?.exists ? event.data.before.data() : null;
+
+  // 1. appointmentAt
+  try {
+    const desired = desiredAppointmentAt(afterData);
+    const currentMs = afterData.appointmentAt?.toDate?.().getTime() ?? null;
+    const desiredMs = desired ? desired.getTime() : null;
+    if (currentMs !== desiredMs) {
+      await after.ref.update({
+        appointmentAt: desired ?
+          admin.firestore.Timestamp.fromDate(desired) :
+          admin.firestore.FieldValue.delete(),
+      });
+    }
+  } catch (error) {
+    logger.error('Error syncing appointmentAt', {appointmentId, error: error.message});
+  }
+
+  // 2. Freed slot offers
+  if (!isNewCancellation(beforeData, afterData)) return;
+  try {
+    // Triggers can be delivered more than once; offer once per event
+    const firstDelivery = await admin.firestore().runTransaction(async (tx) => {
+      const snap = await tx.get(after.ref);
+      if (snap.get('lastSlotOfferEventId') === event.id) return false;
+      tx.update(after.ref, {lastSlotOfferEventId: event.id});
+      return true;
+    });
+    if (!firstDelivery) return;
+
+    const notified = await notifyPatientsOfFreedSlot(appointmentId, afterData);
+    logger.info('Freed slot offered to later patients', {appointmentId, notified});
+    if (notified > 0) {
+      await logActivity(
+        `Slot ${afterData.date} ${afterData.time} freed by a cancellation was offered to ${notified} patient(s)`,
+        'slot_offer',
+      );
+    }
+  } catch (error) {
+    logger.error('Error offering freed slot', {appointmentId, error: error.message});
+  }
+});
 
 /**
  * HTTP webhook endpoint to handle incoming SMS replies from Twilio
@@ -365,25 +445,8 @@ exports.handleSmsReply = onRequest(async (req, res) => {
     logger.info('Processing reply', { cleanReply, original: bodyText });
     
     // Find appointment by phone number
-    // Try multiple phone number formats for matching
-    // Enhanced for Pakistani numbers
-    const phoneVariations = [
-      normalizedPhone,
-      fromPhone,
-      normalizedPhone?.replace('+', ''),
-      fromPhone?.replace('+', ''),
-      // Pakistani number variations
-      normalizedPhone?.replace(/^\+92/, '0'), // +923477974809 -> 03477974809
-      normalizedPhone?.replace(/^\+92/, '92'), // +923477974809 -> 923477974809
-      fromPhone?.replace(/^\+92/, '0'), // Direct from Twilio
-      fromPhone?.replace(/^\+92/, '92'), // Direct from Twilio without +
-      // Also try with spaces removed (in case of formatting)
-      normalizedPhone?.replace(/\s/g, ''),
-      fromPhone?.replace(/\s/g, ''),
-    ].filter(Boolean);
-    
-    // Remove duplicates
-    const uniquePhoneVariations = [...new Set(phoneVariations)];
+    // Try multiple phone number formats for matching (incl. Pakistani numbers)
+    const uniquePhoneVariations = phoneVariations(fromPhone);
     
     logger.info('Phone variations to try', {
       original: fromPhone,
@@ -397,54 +460,19 @@ exports.handleSmsReply = onRequest(async (req, res) => {
     // Query with multiple phone number variations
     const appointmentsRef = admin.firestore().collection('Appointments');
     
-    // Try each phone variation
+    // Collect booked appointments stored under any of the phone spellings
+    // (previously the search stopped at the first spelling with a match).
+    // Cancelled ones are left out so a reply can't reactivate them.
+    const candidatesById = new Map();
     for (const phoneVar of uniquePhoneVariations) {
       try {
-        logger.info('Trying phone variation', { phoneVar });
-        
-        // Query for appointments with this phone number and relevant statuses
         const querySnapshot = await appointmentsRef
           .where('phone', '==', phoneVar)
-          .where('status', 'in', [
-            'active',
-            'reminder_sent_awaiting_reply',
-            'REMINDER_SENT_AWAITING_REPLY',
-            'awaitingReply',
-            'no response',
-            'BOOKED',
-            'ACTIVE',
-            'CANCELLED',
-            'CONFIRMED',              // Added for confirmed appointments
-            'Confirmed_Priority',     // Added for priority list appointments
-          ])
-          .orderBy('date', 'desc')
-          .limit(5)
+          .where('status', 'in', BOOKED_STATUSES)
           .get();
-        
-        logger.info('Query result', {
-          phoneVar,
-          found: querySnapshot.size,
-          docs: querySnapshot.docs.map(doc => ({
-            id: doc.id,
-            phone: doc.data().phone,
-            name: doc.data().name,
-            status: doc.data().status,
-          })),
-        });
-        
-        if (!querySnapshot.empty) {
-          // Get the most recent appointment (first in desc order)
-          appointmentDoc = querySnapshot.docs[0];
-          appointmentData = appointmentDoc.data();
-          logger.info('Found appointment', {
-            appointmentId: appointmentDoc.id,
-            patientName: appointmentData.name,
-            date: appointmentData.date,
-            status: appointmentData.status,
-            phoneInFirestore: appointmentData.phone,
-            phoneMatched: phoneVar,
-          });
-          break;
+        logger.info('Query result', { phoneVar, found: querySnapshot.size });
+        for (const doc of querySnapshot.docs) {
+          candidatesById.set(doc.id, {id: doc.id, data: doc.data(), doc, phoneVar});
         }
       } catch (queryError) {
         logger.warn('Error querying with phone variation', {
@@ -454,12 +482,28 @@ exports.handleSmsReply = onRequest(async (req, res) => {
         });
       }
     }
+
+    // Pick the appointment the reply is about (see pickAppointmentForReply)
+    const picked = pickAppointmentForReply([...candidatesById.values()]);
+    if (picked) {
+      appointmentDoc = picked.doc;
+      appointmentData = appointmentDoc.data();
+      logger.info('Found appointment', {
+        appointmentId: appointmentDoc.id,
+        patientName: appointmentData.name,
+        date: appointmentData.date,
+        status: appointmentData.status,
+        phoneInFirestore: appointmentData.phone,
+        phoneMatched: picked.phoneVar,
+        candidates: candidatesById.size,
+      });
+    }
     
     if (!appointmentDoc || !appointmentData) {
       logger.warn('No appointment found for phone number', {
         phone: fromPhone,
         normalized: normalizedPhone,
-        triedVariations: phoneVariations,
+        triedVariations: uniquePhoneVariations,
       });
       
       await logActivity(
@@ -482,41 +526,25 @@ exports.handleSmsReply = onRequest(async (req, res) => {
     let activityMessage = '';
     let replyMessage = '';
     
-    if (cleanReply === '1' || cleanReply === 'confirm' || cleanReply === 'yes') {
+    const action = parseSmsReply(bodyText);
+    updateData = buildReplyUpdate(action, admin.firestore.FieldValue.serverTimestamp());
+
+    if (action === 'confirm') {
       // Reply 1: Confirm appointment
-      updateData = {
-        status: 'CONFIRMED', // Uppercase to match UI query
-        userResponse: 'Confirmed',
-        lastUpdated: admin.firestore.FieldValue.serverTimestamp(),
-      };
-      activityMessage = `Patient ${patientName} (${patientId.substring(0, 6)}...) confirmed appointment via SMS`;
+      activityMessage = `Patient ${patientName} (${shortId(patientId)}) confirmed appointment via SMS`;
       replyMessage = 'Thank you! Your appointment is confirmed.';
       logger.info('Processing reply "1" - CONFIRM', { patientId, appointmentDate });
       
-    } else if (cleanReply === '2' || cleanReply === 'cancel' || cleanReply === 'no') {
+    } else if (action === 'cancel') {
       // Reply 2: Cancel appointment
-      updateData = {
-        status: 'cancelled',
-        userResponse: 'Cancelled',
-        lastUpdated: admin.firestore.FieldValue.serverTimestamp(),
-      };
-      activityMessage = `Patient ${patientName} (${patientId.substring(0, 6)}...) cancelled appointment via SMS`;
+      // (onAppointmentWritten offers the freed slot to later patients)
+      activityMessage = `Patient ${patientName} (${shortId(patientId)}) cancelled appointment via SMS`;
       replyMessage = 'Your appointment has been cancelled. We hope to see you soon!';
       logger.info('Processing reply "2" - CANCEL', { patientId, appointmentDate });
       
-      // TODO: Trigger cascading reallocation if implemented
-      // await triggerCascadingReallocation(appointmentRef.id);
-      
-    } else if (cleanReply === '3' || cleanReply === 'reschedule' || cleanReply === 'change') {
+    } else if (action === 'priority') {
       // Reply 3: Request reschedule (join priority list)
-      updateData = {
-        status: 'Confirmed_Priority',
-        userResponse: 'Priority_Request',
-        isPriority: true,
-        priorityJoinedAt: admin.firestore.FieldValue.serverTimestamp(),
-        lastUpdated: admin.firestore.FieldValue.serverTimestamp(),
-      };
-      activityMessage = `Patient ${patientName} (${patientId.substring(0, 6)}...) requested reschedule via SMS (joined priority list)`;
+      activityMessage = `Patient ${patientName} (${shortId(patientId)}) requested reschedule via SMS (joined priority list)`;
       replyMessage = 'You are on our priority list! We will offer you earlier slots as they become available. Your current appointment is safe.';
       logger.info('Processing reply "3" - RESCHEDULE/PRIORITY', { patientId, appointmentDate });
       
@@ -529,7 +557,7 @@ exports.handleSmsReply = onRequest(async (req, res) => {
       });
       
       await logActivity(
-        `Unknown SMS reply from ${patientName} (${patientId.substring(0, 6)}...): "${bodyText}"`,
+        `Unknown SMS reply from ${patientName} (${shortId(patientId)}): "${bodyText}"`,
         'sms_reply_unknown'
       );
       
@@ -548,6 +576,7 @@ exports.handleSmsReply = onRequest(async (req, res) => {
       
       // Log activity
       await logActivity(activityMessage, 'sms_reply');
+
       
       // Send confirmation SMS reply (optional - can be disabled if not needed)
       // Note: This requires Twilio to be configured, and may incur additional costs
@@ -789,61 +818,11 @@ exports.process48HourReminders = onSchedule({
           continue;
         }
 
-        // Parse appointment date and time
-        let appointmentDateTime;
-        try {
-          const dateParts = appointmentDate.split('-');
-          if (dateParts.length !== 3) {
-            logger.warn('Invalid date format', { appointmentId: doc.id, date: appointmentDate });
-            continue;
-          }
-
-          const day = parseInt(dateParts[0]);
-          const month = parseInt(dateParts[1]) - 1; // JavaScript months are 0-indexed
-          const year = parseInt(dateParts[2]);
-
-          // Parse time (format: "hh:mm a" or "HH:mm")
-          const timeStr = appointmentTime.trim();
-          let hours = 0;
-          let minutes = 0;
-          
-          if (timeStr.includes('AM') || timeStr.includes('PM')) {
-            // Format: "12:30 PM"
-            const timeMatch = timeStr.match(/(\d{1,2}):(\d{2})\s*(AM|PM)/i);
-            if (timeMatch) {
-              hours = parseInt(timeMatch[1]);
-              minutes = parseInt(timeMatch[2]);
-              const period = timeMatch[3].toUpperCase();
-              
-              if (period === 'PM' && hours !== 12) {
-                hours += 12;
-              } else if (period === 'AM' && hours === 12) {
-                hours = 0;
-              }
-            }
-          } else {
-            // Format: "14:30" (24-hour)
-            const timeMatch = timeStr.match(/(\d{1,2}):(\d{2})/);
-            if (timeMatch) {
-              hours = parseInt(timeMatch[1]);
-              minutes = parseInt(timeMatch[2]);
-            }
-          }
-
-          appointmentDateTime = new Date(year, month, day, hours, minutes, 0, 0);
-          
-          if (isNaN(appointmentDateTime.getTime())) {
-            logger.warn('Invalid appointment date/time', {
-              appointmentId: doc.id,
-              date: appointmentDate,
-              time: appointmentTime,
-            });
-            continue;
-          }
-        } catch (parseError) {
-          logger.warn('Error parsing appointment date/time', {
+        // Parse appointment date and time (UK clinic time; handles AM/PM and 24h)
+        const appointmentDateTime = parseAppointmentDateTime(appointmentDate, appointmentTime);
+        if (!appointmentDateTime) {
+          logger.warn('Invalid appointment date/time', {
             appointmentId: doc.id,
-            error: parseError.message,
             date: appointmentDate,
             time: appointmentTime,
           });

@@ -37,16 +37,6 @@ class _SelectionViewState extends State<SelectionView> {
                           bottomLeft: Radius.circular(100),
                         ),
                         color: Colors.blueAccent,
-                        // gradient: LinearGradient(
-                        //   end: Alignment.topLeft,
-                        //   begin: Alignment.bottomCenter,
-                        //   colors: [
-                        //     Colors.blue.shade200.withOpacity(1),
-                        //     //  Colors.blue.shade600.withOpacity(1),
-                        //     //Colors.blue.shade600.withOpacity(1),
-                        //     Colors.blue.shade200.withOpacity(1),
-                        //   ],
-                        // )
                     ),
                   ),
                   const Column(

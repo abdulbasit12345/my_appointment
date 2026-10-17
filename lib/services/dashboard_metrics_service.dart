@@ -61,9 +61,13 @@ class DashboardMetricsService {
   /// 
   /// [limit] - Maximum number of entries to fetch (default: 10)
   /// [typeFilter] - Optional filter by activity type (null = all types)
+  /// [typeFilters] - Optional filter matching any of several types
+  ///   (`whereIn`, served by the same (type, timestamp) index as
+  ///   [typeFilter]); takes precedence over [typeFilter] when non-empty.
   Stream<QuerySnapshot> getActivityLogStream({
     int limit = 10,
     String? typeFilter,
+    List<String>? typeFilters,
   }) {
     Query query = _firestore
         .collection('DashboardMetrics')
@@ -71,7 +75,9 @@ class DashboardMetricsService {
         .collection('activityLog');
 
     // Apply type filter if provided (must come before orderBy)
-    if (typeFilter != null && typeFilter.isNotEmpty) {
+    if (typeFilters != null && typeFilters.isNotEmpty) {
+      query = query.where('type', whereIn: typeFilters);
+    } else if (typeFilter != null && typeFilter.isNotEmpty) {
       query = query.where('type', isEqualTo: typeFilter);
     }
 

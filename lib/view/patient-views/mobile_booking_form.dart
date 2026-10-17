@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:intl_phone_field/intl_phone_field.dart';
 
+import '../../services/slot_lock_service.dart';
+
 class MobileBookingForm extends StatefulWidget {
   final Function(String)? onSuccess;
 
@@ -19,6 +21,7 @@ class _MobileBookingFormState extends State<MobileBookingForm> {
 
   String? _phoneE164;
   DateTime? _selectedDate;
+  bool _isSubmitting = false;
 
   @override
   void initState() {
@@ -78,6 +81,7 @@ class _MobileBookingFormState extends State<MobileBookingForm> {
   }
 
   Future<void> _submit() async {
+    if (_isSubmitting) return; // Ignore double taps while a booking is saving
     if (_nameController.text.trim().isEmpty ||
         _phoneE164 == null ||
         _dateController.text.isEmpty ||
@@ -89,24 +93,51 @@ class _MobileBookingFormState extends State<MobileBookingForm> {
     }
 
     final patientName = _nameController.text.trim();
+    final date = _dateController.text;
+    final time = _timeController.text;
     final docId =
-        'web-${DateTime.now().millisecondsSinceEpoch}-${_dateController.text}-${_timeController.text}';
+        'web-${DateTime.now().millisecondsSinceEpoch}-$date-$time';
 
-    await FirebaseFirestore.instance.collection('Appointments').doc(docId).set({
-      'patientID': null,
-      'email': null,
-      'name': patientName,
-      'address': null,
-      'location': null,
-      'date': _dateController.text,
-      'time': _timeController.text,
-      'status': 'active',
-      'phone': _phoneE164,
-      'operationType': null,
-      'hospital': null,
-      'reallocationStatus': 'Original',
-      'userResponse': null,
-    });
+    setState(() => _isSubmitting = true);
+    try {
+      // Appointments booked without a slot lock (older ones, CSV import)
+      if (await SlotLockService.isSlotTakenByQuery(date, time)) {
+        _showSlotTakenMessage(date, time);
+        return;
+      }
+
+      final appointmentRef =
+          FirebaseFirestore.instance.collection('Appointments').doc(docId);
+      final booked = await FirebaseFirestore.instance
+          .runTransaction<bool>((transaction) async {
+        // Another booking/claim racing this one holds the lock
+        if (await SlotLockService.isLockedInTransaction(
+            transaction, date, time)) {
+          return false;
+        }
+        transaction.set(appointmentRef, _appointmentData(patientName, date, time));
+        SlotLockService.writeLock(transaction, date, time, docId);
+        return true;
+      });
+
+      if (!booked) {
+        _showSlotTakenMessage(date, time);
+        return;
+      }
+    } catch (e) {
+      debugPrint('Error booking appointment: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Could not book the appointment. Please check your connection and try again.'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+      return;
+    } finally {
+      if (mounted) setState(() => _isSubmitting = false);
+    }
 
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -128,6 +159,36 @@ class _MobileBookingFormState extends State<MobileBookingForm> {
       
       Navigator.of(context).maybePop();
     }
+  }
+
+  void _showSlotTakenMessage(String date, String time) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('The slot on $date at $time is already booked. Please choose another time.'),
+        backgroundColor: Colors.red,
+      ),
+    );
+  }
+
+  // Uses the date/time captured before the slot check, so the saved slot is
+  // the one that was checked and locked even if a field changes meanwhile.
+  Map<String, dynamic> _appointmentData(String patientName, String date, String time) {
+    return {
+      'patientID': null,
+      'email': null,
+      'name': patientName,
+      'address': null,
+      'location': null,
+      'date': date,
+      'time': time,
+      'status': 'active',
+      'phone': _phoneE164,
+      'operationType': null,
+      'hospital': null,
+      'reallocationStatus': 'Original',
+      'userResponse': null,
+    };
   }
 
   @override
@@ -417,7 +478,7 @@ class _MobileBookingFormState extends State<MobileBookingForm> {
                         width: double.infinity,
                         height: 56,
                         child: ElevatedButton.icon(
-                          onPressed: _submit,
+                          onPressed: _isSubmitting ? null : _submit,
                           icon: const Icon(Icons.check_circle_outline, size: 24),
                           label: const Text(
                             'Book Appointment',

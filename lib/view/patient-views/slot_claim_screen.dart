@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import '../../services/appointment_service.dart';
 import '../../res/color.dart';
+import '../../utils/appointment_status.dart';
 import '../../utils/date_utils.dart';
 import 'patientHomeViewNew.dart';
 
@@ -105,7 +106,7 @@ class _SlotClaimScreenState extends State<SlotClaimScreen> {
       final QuerySnapshot snapshot = await FirebaseFirestore.instance
           .collection('Appointments')
           .where('patientID', isEqualTo: user.uid)
-          .where('status', isEqualTo: 'active')
+          .where('status', whereIn: AppointmentStatus.bookedValues)
           .get();
 
       if (snapshot.docs.isNotEmpty) {
@@ -157,6 +158,12 @@ class _SlotClaimScreenState extends State<SlotClaimScreen> {
   /// Parse date and time strings into DateTime
   DateTime _parseDateTime(String dateStr, String timeStr) {
     final parsedDate = Date_Utils.parseDate(dateStr);
+    // Handles 'hh:mm a' including PM, and 'HH:mm'
+    final parsedTime = Date_Utils.tryParseTimeFlexible(timeStr);
+    if (parsedTime != null) {
+      return DateTime(parsedDate.year, parsedDate.month, parsedDate.day,
+          parsedTime.hour, parsedTime.minute);
+    }
     final timeParts = timeStr.split(':');
     final hour = int.parse(timeParts[0].trim());
     final minute = int.parse(timeParts[1].split(' ')[0].trim());

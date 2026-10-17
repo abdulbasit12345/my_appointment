@@ -1,235 +1,3 @@
-// import 'package:appoinment/res/color.dart';
-// import 'package:appoinment/view/selection_view.dart';
-// import 'package:cloud_firestore/cloud_firestore.dart';
-// import 'package:firebase_auth/firebase_auth.dart';
-// import 'package:flutter/material.dart';
-// import 'package:intl/intl.dart';
-//
-// class DoctorHomeScreen extends StatefulWidget {
-//   const DoctorHomeScreen({super.key});
-//
-//   @override
-//   State<DoctorHomeScreen> createState() => _DoctorHomeScreenState();
-// }
-//
-// class _DoctorHomeScreenState extends State<DoctorHomeScreen> {
-//   String _currentDate = '';
-//
-//   @override
-//   void initState() {
-//     super.initState();
-//  //   _fetchCurrentDate();
-//   }
-//
-//   void _fetchCurrentDate() {
-//     DateTime now = DateTime.now();
-//     _currentDate = DateFormat('yyyy-MM-dd').format(now);
-//   }
-//
-//   Stream<QuerySnapshot> _getAppointments() {
-//     return FirebaseFirestore.instance.collection('Appointments').snapshots();
-//   }
-//
-//   Future<void> _logout() async {
-//     await FirebaseAuth.instance.signOut();
-//     Navigator.pushReplacement(
-//       context,
-//       MaterialPageRoute(builder: (context) => SelectionView()), // Navigate to your selection screen
-//     );
-//   }
-//
-//   @override
-//   Widget build(BuildContext context) {
-//     return Scaffold(
-//       appBar: AppBar(
-//         title: Text('Available Patients', style: TextStyle(color: AppColors.yellowColor)),
-//         actions: [
-//           IconButton(
-//             icon: Icon(Icons.logout),
-//             onPressed: _logout,
-//           ),
-//         ],
-//       ),
-//       body: Padding(
-//         padding: const EdgeInsets.all(16.0),
-//         child: Column(
-//           children: [
-//             Text('Current Date: $_currentDate', style: TextStyle(fontSize: 18)),
-//             SizedBox(height: 20),
-//             Expanded(
-//               child: StreamBuilder<QuerySnapshot>(
-//                 stream: _getAppointments(),
-//                 builder: (BuildContext context, AsyncSnapshot<QuerySnapshot> snapshot) {
-//                   if (snapshot.hasError) {
-//                     return Center(child: Text('Something went wrong'));
-//                   }
-//
-//                   if (snapshot.connectionState == ConnectionState.waiting) {
-//                     return Center(child: CircularProgressIndicator());
-//                   }
-//
-//                   if (snapshot.data!.docs.isEmpty) {
-//                     return Center(child: Text('No appointments found'));
-//                   }
-//
-//                   return ListView(
-//                     children: snapshot.data!.docs.map((DocumentSnapshot document) {
-//                       Map<String, dynamic> data = document.data()! as Map<String, dynamic>;
-//                       return ListTile(
-//                         title: Text(data['name'], style: TextStyle(color: AppColors.whiteColor)),
-//                         subtitle: Column(
-//                           crossAxisAlignment: CrossAxisAlignment.start,
-//                           children: [
-//                             Text('Date: ${data['date']}'),
-//                             Text('Status: ${data['status']}'),
-//                           ],
-//                         ),
-//                       );
-//                     }).toList(),
-//                   );
-//                 },
-//               ),
-//             ),
-//           ],
-//         ),
-//       ),
-//     );
-//   }
-// }
-
-///
-///
-///
-///
-///
-///
-///
-///
-///
-///
-///
-///
-///
-// import 'package:appoinment/res/color.dart';
-// import 'package:appoinment/view/Doctor-views/patient-details-screen.dart';
-// import 'package:appoinment/view/selection_view.dart';
-// import 'package:cloud_firestore/cloud_firestore.dart';
-// import 'package:firebase_auth/firebase_auth.dart';
-// import 'package:flutter/cupertino.dart';
-// import 'package:flutter/material.dart';
-// import 'package:intl/intl.dart';
-//
-// class DoctorHomeScreen extends StatefulWidget {
-//   const DoctorHomeScreen({super.key});
-//
-//   @override
-//   State<DoctorHomeScreen> createState() => _DoctorHomeScreenState();
-// }
-//
-// class _DoctorHomeScreenState extends State<DoctorHomeScreen> {
-//   String _currentDate = '';
-//
-//   @override
-//   void initState() {
-//     super.initState();
-//     _fetchCurrentDate();
-//   }
-//
-//   void _fetchCurrentDate() {
-//     DateTime now = DateTime.now();
-//     _currentDate = DateFormat('yyyy-MM-dd').format(now);
-//   }
-//
-//   Stream<QuerySnapshot> _getAppointments() {
-//     return FirebaseFirestore.instance.collection('Appointments').snapshots();
-//   }
-//
-//   Future<void> _logout() async {
-//     await FirebaseAuth.instance.signOut();
-//     Navigator.pushReplacement(
-//       context,
-//       MaterialPageRoute(builder: (context) => SelectionView()), // Navigate to your selection screen
-//     );
-//   }
-//
-//   @override
-//   Widget build(BuildContext context) {
-//     return Scaffold(
-//       appBar: AppBar(
-//         title: Text('Available Patients', style: TextStyle(color: AppColors.yellowColor)),
-//         actions: [
-//           IconButton(
-//             icon: Icon(Icons.logout),
-//             onPressed: _logout,
-//           ),
-//         ],
-//       ),
-//       body: Padding(
-//         padding: const EdgeInsets.all(16.0),
-//         child: Column(
-//           children: [
-//             Text('Current Date: $_currentDate', style: TextStyle(fontSize: 18)),
-//             SizedBox(height: 20),
-//             Expanded(
-//               child: StreamBuilder<QuerySnapshot>(
-//                 stream: _getAppointments(),
-//                 builder: (BuildContext context, AsyncSnapshot<QuerySnapshot> snapshot) {
-//                   if (snapshot.hasError) {
-//                     return Center(child: Text('Something went wrong'));
-//                   }
-//
-//                   if (snapshot.connectionState == ConnectionState.waiting) {
-//                     return Center(child: CircularProgressIndicator());
-//                   }
-//
-//                   if (snapshot.data!.docs.isEmpty) {
-//                     return Center(child: Text('No appointments found'));
-//                   }
-//
-//                   return ListView(
-//                     children: snapshot.data!.docs.map((DocumentSnapshot document) {
-//                       Map<String, dynamic> data = document.data()! as Map<String, dynamic>;
-//                       return ListTile(
-//                         title: Text(data['name'], style: TextStyle(color: AppColors.whiteColor)),
-//                         subtitle: Column(
-//                           crossAxisAlignment: CrossAxisAlignment.start,
-//                           children: [
-//                             Text('Date: ${data['date']}'),
-//                             Text('Status: ${data['status']}'),
-//                           ],
-//                         ),
-//                         onTap: () {
-//                           Navigator.push(
-//                             context,
-//                             CupertinoPageRoute(
-//                               builder: (context) => PatientDetailView(
-//                                 name: data['name'],
-//                                 date: data['date'].toString(),
-//                                 status: data['status'],
-//                                 address: data['address'],
-//                               ),
-//                             ),
-//                           );
-//                         },
-//                       );
-//                     }).toList(),
-//                   );
-//                 },
-//               ),
-//             ),
-//           ],
-//         ),
-//       ),
-//     );
-//   }
-// }
-
-///
-///
-///
-library;
-
-
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/cupertino.dart';
@@ -240,6 +8,7 @@ import 'package:my_appointment/view/authentication/doctor_auth/doctor_login_view
 
 import '../../res/color.dart';
 import '../../res/components/status_badge.dart';
+import '../../utils/appointment_status.dart';
 import '../../utils/date_utils.dart';
 import '../selection_view.dart';
 
@@ -259,7 +28,7 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen> {
   Stream<QuerySnapshot> _getAppointments() {
     return FirebaseFirestore.instance
         .collection('Appointments')
-        .where('status', isEqualTo: 'active') // Filter by status 'active'
+        .where('status', whereIn: AppointmentStatus.bookedValues) // All booked statuses (active, CONFIRMED, ...)
         .snapshots();
   }
 
@@ -277,7 +46,11 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen> {
         title: const Text('Available Patients', style: TextStyle(color: AppColors.whiteColor)),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_ios_new,color: AppColors.whiteColor,),
-          onPressed: (){
+          onPressed: () async {
+            // Going back to the login screen ends the session, so the doctor
+            // isn't silently logged back in on the next launch
+            await FirebaseAuth.instance.signOut();
+            if (!context.mounted) return;
             Navigator.of(context).pushReplacement(CupertinoPageRoute(builder: (context)=>const DoctorLoginView() ));
           },
         ),
@@ -390,7 +163,7 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen> {
                   return ListView(
                     children: validAppointments.map((DocumentSnapshot document) {
                       Map<String, dynamic> data = document.data()! as Map<String, dynamic>;
-                      String appointmentStatus = data['status'] ?? 'active';
+                      String appointmentStatus = data['status']?.toString() ?? 'active';
                       
                       return Card(
                         color: Colors.grey,
@@ -417,12 +190,13 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen> {
                           onTap: () {
                             Navigator.push(
                               context, CupertinoPageRoute(builder: (context) => PatientDetailView(
-                                  name: data['name'],
-                                  date: data['date'].toString(),
-                                  status: data['status'],
-                                  address: data['address'],
-                                  phone: data['phone'],
-                                  time: data['time'],
+                                  // Web/CSV bookings can have null fields
+                                  name: data['name']?.toString() ?? '',
+                                  date: data['date']?.toString() ?? '',
+                                  status: appointmentStatus,
+                                  address: data['address']?.toString() ?? '',
+                                  phone: data['phone']?.toString() ?? '',
+                                  time: data['time']?.toString() ?? '',
                                 ),
                               ),
                             );

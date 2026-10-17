@@ -1,7 +1,9 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../../models/appointment_data.dart';
+import '../../repositories/dashboard_repository.dart';
 import '../../utils/date_utils.dart';
+import 'services/phone_formatting.dart';
 
 /// Professional Edit Appointment Dialog for Admin Dashboard
 class EditAppointmentDialog extends StatefulWidget {
@@ -49,11 +51,19 @@ class _EditAppointmentDialogState extends State<EditAppointmentDialog> {
   }
 
   Future<void> _selectDate(BuildContext context) async {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final current = _selectedDate ?? today;
+    final initialDate = DateTime(current.year, current.month, current.day);
     final DateTime? picked = await showDatePicker(
       context: context,
-      initialDate: _selectedDate ?? DateTime.now(),
-      firstDate: DateTime.now(),
-      lastDate: DateTime.now().add(const Duration(days: 365)),
+      initialDate: initialDate,
+      // Past appointments (e.g. recently cancelled ones) must still open the
+      // picker, so allow dates back to the appointment's own date.
+      firstDate: initialDate.isBefore(today) ? initialDate : today,
+      lastDate: initialDate.isAfter(today.add(const Duration(days: 365)))
+          ? initialDate
+          : today.add(const Duration(days: 365)),
       builder: (context, child) {
         return Theme(
           data: Theme.of(context).copyWith(
@@ -98,41 +108,16 @@ class _EditAppointmentDialogState extends State<EditAppointmentDialog> {
     }
   }
 
-  String _normalizePhoneNumber(String phone) {
-    String cleaned = phone.trim();
-    if (cleaned.isEmpty) return cleaned;
-    
-    // Remove all non-digit characters except +
-    cleaned = cleaned.replaceAll(RegExp(r'[^\d+]'), '');
-    
-    // If already in E.164 format (starts with +), return as is
-    if (cleaned.startsWith('+')) {
-      return cleaned;
+  /// Raw stored values shown in the invalid date/time warning.
+  String _invalidRawValue() {
+    final parts = <String>[];
+    if (widget.appointment.hasInvalidDate) {
+      parts.add('date "${widget.appointment.rawDate ?? ''}"');
     }
-    
-    // If starts with 00 (international format), replace with +
-    if (cleaned.startsWith('00')) {
-      return '+' + cleaned.substring(2);
+    if (widget.appointment.hasInvalidTime) {
+      parts.add('time "${widget.appointment.rawTime ?? ''}"');
     }
-    
-    // If starts with 0 (local format), try to detect country
-    if (cleaned.startsWith('0') && cleaned.length > 10) {
-      // UK format: 0XXXXXXXXX -> +44XXXXXXXXX
-      return '+44' + cleaned.substring(1);
-    }
-    
-    // If 10 digits, assume US number
-    if (cleaned.length == 10) {
-      return '+1' + cleaned;
-    }
-    
-    // If 11 digits starting with 1, assume US
-    if (cleaned.length == 11 && cleaned.startsWith('1')) {
-      return '+' + cleaned;
-    }
-    
-    // Return with + prefix if not already present
-    return cleaned.startsWith('+') ? cleaned : '+' + cleaned;
+    return parts.join(', ');
   }
 
   Future<void> _saveChanges() async {
@@ -183,30 +168,21 @@ class _EditAppointmentDialogState extends State<EditAppointmentDialog> {
       final formattedTime = '${_selectedTime!.hour.toString().padLeft(2, '0')}:${_selectedTime!.minute.toString().padLeft(2, '0')}';
       
       // Normalize phone number
-      final normalizedPhone = _normalizePhoneNumber(_phoneController.text.trim());
+      final normalizedPhone = formatPhoneToE164(_phoneController.text.trim());
       
       // Update Firestore
-      await FirebaseFirestore.instance
-          .collection('Appointments')
-          .doc(widget.appointment.documentId)
-          .update({
-        'name': _nameController.text.trim(),
-        'phone': normalizedPhone,
-        'date': formattedDate,
-        'time': formattedTime,
-        'lastUpdated': FieldValue.serverTimestamp(),
-        'updatedBy': 'admin',
-        'updatedAt': FieldValue.serverTimestamp(),
-      });
+      await context.read<DashboardRepository>().updateAppointmentDetails(
+        documentId: widget.appointment.documentId,
+        name: _nameController.text.trim(),
+        phone: normalizedPhone,
+        date: formattedDate,
+        time: formattedTime,
+      );
       
       if (mounted) {
-        Navigator.of(context).pop(true); // Return true to indicate success
+        Navigator.of(context).pop(true);
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Appointment updated successfully!'),
-            backgroundColor: Colors.green,
-            duration: Duration(seconds: 2),
-          ),
+          const SnackBar(content: Text('Appointment updated successfully!')),
         );
       }
     } catch (e) {
@@ -252,6 +228,26 @@ class _EditAppointmentDialogState extends State<EditAppointmentDialog> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              if (widget.appointment.hasInvalidDateTime) ...[
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: Colors.orange[50],
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.orange[300]!),
+                  ),
+                  child: Text(
+                    '⚠ Stored date/time was invalid (${_invalidRawValue()}) — please set the correct date and time',
+                    style: TextStyle(
+                      fontSize: isSmallScreen ? 12 : 13,
+                      color: Colors.orange[900],
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+              ],
               // Patient Name
               Text(
                 'Patient Name *',

@@ -496,30 +496,6 @@ class NotificationServices {
     );
   }
 
-  // Future<void> handleMessage(BuildContext context, RemoteMessage message) async {
-  //   if (message.data['type'] == 'appointment_cancellation') {
-  //     Navigator.push(context,
-  //         MaterialPageRoute(builder: (context) => const PatientHomeViewNew()));
-  //   } else if (message.data['type'] == 'appointment_reminder') {
-  //     Navigator.push(context,
-  //         MaterialPageRoute(builder: (context) => const PatientHomeViewNew()));
-  //   } else if (message.data['type'] == 'view_graph') {
-  //     // Navigate to the graph view, pass the Future to AppointmentGraphScreen
-  //     Navigator.push(context, MaterialPageRoute(builder: (context) => const AppointmentGraphScreen(),),
-  //     );
-  //     // Navigator.push(
-  //     //   context,
-  //     //   MaterialPageRoute(
-  //     //     builder: (context) => AppointmentGraphScreen(
-  //     //       appointmentDate: message.data['appointmentDate'],
-  //     //       appointmentTime: message.data['time'],
-  //     //       status: message
-  //     //           .data['status'], // Pass the date to highlight on the graph
-  //     //     ),
-  //     //   ),
-  //     // );
-  //   }
-  // }
   Future<void> handleMessage(RemoteMessage message) async {
     // Show the notification details screen first
     navigatorKey.currentState?.push(
@@ -532,21 +508,6 @@ class NotificationServices {
     // But we can also navigate directly based on notification type if needed
     // For now, the MessageScreen shows all details and user can choose to navigate
   }
-
-  // Future<void> setupInteractMessage(BuildContext context) async {
-  //   RemoteMessage? initialMessage =
-  //       await FirebaseMessaging.instance.getInitialMessage();
-  //   //when application is kill then you will get this notification
-  //   if (initialMessage != null && context.mounted) {
-  //     handleMessage(context, initialMessage);
-  //   }
-  //   //when app is in background
-  //   FirebaseMessaging.onMessageOpenedApp.listen((event) {
-  //     if (context.mounted) {
-  //       handleMessage(context, event);
-  //     }
-  //   });
-  // }
 
   /// Initialize notification listeners (call this once at app startup)
   Future<void> setupInteractMessage() async {

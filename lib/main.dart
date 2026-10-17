@@ -6,8 +6,14 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:provider/provider.dart';
+import 'package:my_appointment/repositories/dashboard_repository.dart';
+import 'package:my_appointment/repositories/patient_appointments_repository.dart';
 import 'package:my_appointment/res/color.dart';
+import 'package:my_appointment/services/appointment_service.dart';
+import 'package:my_appointment/services/user_role_service.dart';
 import 'package:my_appointment/utils/date_utils.dart';
+import 'package:my_appointment/utils/routes/routes.dart';
 import 'package:my_appointment/view/Doctor-views/doctor-home-screen.dart';
 import 'package:my_appointment/view/dashboard/dashboard_screen.dart';
 import 'package:my_appointment/view/patient-views/patientHomeViewNew.dart';
@@ -34,7 +40,18 @@ void main() async {
 
   FirebaseMessaging.onBackgroundMessage(_FirebaseMessagingBegroudnHandler);
 
-  runApp(const MyApp());
+  runApp(
+    // Data access for the screens; created lazily on first use
+    MultiProvider(
+      providers: [
+        Provider<DashboardRepository>(create: (_) => DashboardRepository()),
+        Provider<PatientAppointmentsRepository>(
+            create: (_) => PatientAppointmentsRepository()),
+        Provider<AppointmentService>(create: (_) => AppointmentService()),
+      ],
+      child: const MyApp(),
+    ),
+  );
 }
 
 // this is for background notification (when app is in background, not terminated)
@@ -127,6 +144,8 @@ class MyApp extends StatelessWidget {
       routes: {
         '/book': (context) => const MobileBookingForm(),
       },
+      // Named routes used by the login screens (e.g. Forget Password)
+      onGenerateRoute: Routes.generateRoute,
       home: const AppEntryPoint(),
     );
   }
@@ -187,20 +206,28 @@ class _AppEntryPointState extends State<AppEntryPoint> {
 
     if (user != null) {
       // User is already logged in
-      String userEmail = user.email!;
-      bool isPatient = await checkIfPatient(userEmail);
+      final UserRole role = await resolveUserRole(user);
+      if (!mounted) return;
 
-      if (isPatient) {
+      if (role == UserRole.patient) {
         Future.delayed(Duration.zero, () {
           Navigator.of(context).pushReplacement(
             CupertinoPageRoute(
                 builder: (context) => const PatientHomeViewNew()),
           );
         });
-      } else {
+      } else if (role == UserRole.doctor) {
         Future.delayed(Duration.zero, () {
           Navigator.of(context).pushReplacement(
             CupertinoPageRoute(builder: (context) => const DoctorHomeScreen()),
+          );
+        });
+      } else {
+        // Neither a patient nor a doctor record: don't fall back to doctor
+        // access. Log in again so the role is checked on the login screen.
+        Future.delayed(Duration.zero, () {
+          Navigator.of(context).pushReplacement(
+            CupertinoPageRoute(builder: (context) => const SelectionView()),
           );
         });
       }
@@ -212,6 +239,29 @@ class _AppEntryPointState extends State<AppEntryPoint> {
         );
       });
     }
+  }
+
+  /// Role from the PatientData / DoctorData records. Only when Firestore
+  /// can't be reached is the role this user last logged in with on this
+  /// device used. An account with no record is signed out.
+  Future<UserRole> resolveUserRole(User user) async {
+    final email = user.email;
+    if (email != null && email.isNotEmpty) {
+      try {
+        final role = await UserRoleService.resolveFromFirestore(email);
+        if (role != UserRole.unknown) {
+          await UserRoleService.cacheRole(user, role);
+          return role;
+        }
+      } catch (e) {
+        // Couldn't reach Firestore: use the cached role, but don't sign out
+        print('Error checking user role: $e');
+        return UserRoleService.cachedRole(user);
+      }
+    }
+
+    await FirebaseAuth.instance.signOut();
+    return UserRole.unknown;
   }
 
   Future<bool> checkIfPatient(String userEmail) async {

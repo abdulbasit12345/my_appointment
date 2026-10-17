@@ -1,4 +1,3 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
@@ -9,6 +8,7 @@ import 'package:my_appointment/view/google_signin.dart';
 
 import '../../../res/color.dart';
 import '../../../res/components/round_button.dart';
+import '../../../services/user_role_service.dart';
 import '../../../utils/routes/routes_name.dart';
 import '../../../utils/utils.dart';
 
@@ -53,13 +53,11 @@ class _PatientLoginViewState extends State<PatientLoginView> {
         setState(() {
           isLoading = false;
         });
-        // Check if the email exists in Firestore
-        DocumentSnapshot doc = await FirebaseFirestore.instance
-            .collection('PatientData')
-            .doc(email)
-            .get();
+        // Check if the email exists in Firestore (as typed or lowercased, so
+        // 'Ali@x.com' and 'ali@x.com' both find the same patient)
+        final bool isPatient = await UserRoleService.isPatient(email);
 
-        if (!doc.exists) {
+        if (!isPatient) {
           Utils.flushBarErrorMessagas('Email not found', context);
           setState(() {
             isLoading = true;
@@ -68,8 +66,11 @@ class _PatientLoginViewState extends State<PatientLoginView> {
         }
 
         // Email exists in Firestore, proceed with Firebase Auth login
-        await FirebaseAuth.instance
+        final credential = await FirebaseAuth.instance
             .signInWithEmailAndPassword(email: email, password: password);
+        if (credential.user != null) {
+          await UserRoleService.cacheRole(credential.user!, UserRole.patient);
+        }
 
         // Utils.snackBar('Login successful', context);
         Utils.flushBarSuccessMessagas('Login successful', context);

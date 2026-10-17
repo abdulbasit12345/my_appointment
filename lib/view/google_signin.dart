@@ -3,6 +3,7 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:my_appointment/services/google_sign_in_service.dart';
+import 'package:my_appointment/services/user_role_service.dart';
 import 'package:my_appointment/utils/utils.dart';
 import 'package:my_appointment/view/Doctor-views/doctor-home-screen.dart';
 import 'package:my_appointment/view/patient-views/patientHomeViewNew.dart';
@@ -54,9 +55,21 @@ class _GoogleSignInButtonState extends State<GoogleSignInButton> {
         throw Exception('Email not found in Google account');
       }
 
-      // Check if user exists in Firestore
-      final String? existingUserType =
-          await _googleSignInService.getUserType(email);
+      // Check if user exists in Firestore (email as typed or lowercased).
+      // A lookup error stops sign-in instead of being treated as "new user",
+      // which used to overwrite the existing record.
+      final UserRole existingRole;
+      try {
+        existingRole = await UserRoleService.resolveFromFirestore(email);
+      } catch (e) {
+        await _googleSignInService.signOut();
+        rethrow;
+      }
+      final String? existingUserType = switch (existingRole) {
+        UserRole.patient => 'patient',
+        UserRole.doctor => 'doctor',
+        UserRole.unknown => null,
+      };
 
       if (existingUserType != null) {
         // User exists - verify they're signing in with correct type
@@ -75,13 +88,31 @@ class _GoogleSignInButtonState extends State<GoogleSignInButton> {
           return;
         }
       } else {
-        // New user - create account in appropriate collection
+        // New user: patients can register themselves. Doctor accounts must
+        // already have a DoctorData record (added by the clinic), otherwise
+        // any Google account could get the doctor screens.
         if (widget.userType == 'patient') {
           await _googleSignInService.createPatientUser(user);
         } else {
-          await _googleSignInService.createDoctorUser(user);
+          setState(() {
+            _isLoading = false;
+          });
+          await _googleSignInService.signOut();
+          if (mounted) {
+            Utils.flushBarErrorMessagas(
+              'This Google account is not registered as a doctor. Please contact the clinic administrator.',
+              context,
+            );
+          }
+          return;
         }
       }
+
+      // Remember the role for the next app launch
+      await UserRoleService.cacheRole(
+        user,
+        widget.userType == 'patient' ? UserRole.patient : UserRole.doctor,
+      );
 
       // Navigate based on user type
       if (mounted) {

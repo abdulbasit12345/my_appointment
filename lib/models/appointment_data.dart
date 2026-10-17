@@ -1,5 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/foundation.dart';
 import 'package:intl/intl.dart';
+import '../utils/appointment_status.dart';
 import '../utils/date_utils.dart';
 
 /// Robust data model for Appointments collection from Firestore
@@ -27,6 +29,24 @@ class AppointmentData {
   final String? originalPatientName; // Original patient name (if slot was taken from someone)
   final bool isPriority; // Whether patient is on priority list for earlier slots
   final DateTime? priorityJoinedAt; // When patient joined priority list
+
+  // Set when the stored date/time couldn't be parsed. [date]/[time] then hold
+  // a fallback value so sorting and filtering keep working, and the display
+  // getters show a warning with the raw value instead of a believable date.
+  final bool hasInvalidDate;
+  final bool hasInvalidTime;
+  final String? rawDate;
+  final String? rawTime;
+
+  bool get hasInvalidDateTime => hasInvalidDate || hasInvalidTime;
+
+  /// Exact start time (UK clinic time) kept in sync from [date]/[time] by the
+  /// onAppointmentWritten Cloud Function. Null until the function has
+  /// processed the document; [date]/[time] remain the source of truth.
+  final DateTime? appointmentAt;
+
+  /// Meaning of [status], whatever spelling is stored.
+  AppointmentStatusKind get statusKind => AppointmentStatus.kindOf(status);
   
   /// Computed property: Combined date and time as DateTime
   DateTime get appointmentDateTime => DateTime(
@@ -39,17 +59,19 @@ class AppointmentData {
   
   /// Computed property: Formatted string "DD Month YYYY @ HH:MM AM/PM" (UK format)
   String get dateTimeString {
-    final dateFormat = DateFormat('d MMMM yyyy'); // UK format: "12 December 2025"
     final timeFormat = DateFormat('hh:mm a');
-    final dateStr = dateFormat.format(date);
     final timeStr = timeFormat.format(appointmentDateTime);
-    return '$dateStr @ $timeStr';
+    return '$ukFormattedDate @ $timeStr';
   }
   
   /// UK format date string: "12 December 2025"
+  /// Carries a warning when the stored date or time is invalid.
   String get ukFormattedDate {
+    if (hasInvalidDate) return '⚠ Invalid date "${rawDate ?? ''}"';
     final dateFormat = DateFormat('d MMMM yyyy');
-    return dateFormat.format(date);
+    final dateStr = dateFormat.format(date);
+    if (hasInvalidTime) return '$dateStr (⚠ invalid time "${rawTime ?? ''}")';
+    return dateStr;
   }
   
   /// Formatted date string (dd-MM-yyyy format from Firestore)
@@ -130,44 +152,38 @@ class AppointmentData {
     this.originalPatientName,
     this.isPriority = false,
     this.priorityJoinedAt,
+    this.hasInvalidDate = false,
+    this.hasInvalidTime = false,
+    this.rawDate,
+    this.rawTime,
+    this.appointmentAt,
   });
 
   /// Factory constructor to create AppointmentData from Firestore DocumentSnapshot
   factory AppointmentData.fromFirestore(DocumentSnapshot doc) {
     final data = doc.data() as Map<String, dynamic>;
     
-    // Extract date string and parse it
-    final dateString = data['date'] as String? ?? '';
-    DateTime parsedDate;
-    try {
-      parsedDate = Date_Utils.parseDate(dateString);
-    } catch (e) {
-      // Fallback to current date if parsing fails
+    // Extract date string and parse it (strictly, so '32-01-2025' isn't
+    // silently rolled over to 1 February)
+    final rawDateValue = data['date'];
+    final dateString = rawDateValue is String ? rawDateValue : '';
+    DateTime? parsedDate = Date_Utils.tryParseDateStrict(dateString);
+    final hasInvalidDate = parsedDate == null;
+    if (parsedDate == null) {
+      // Keep the record visible (today) but flagged
       parsedDate = DateTime.now();
+      debugPrint('AppointmentData ${doc.id}: invalid date "$rawDateValue"');
     }
     
     // Extract time string and parse it
-    final timeString = data['time'] as String? ?? '';
-    DateTime parsedTime;
-    try {
-      // Handle both 24-hour (HH:mm) and 12-hour (hh:mm a) formats
-      if (timeString.contains(':')) {
-        final parts = timeString.split(':');
-        if (parts.length >= 2) {
-          final hourStr = parts[0].trim();
-          final minuteStr = parts[1].split(' ')[0].trim();
-          final hour = int.tryParse(hourStr) ?? 0;
-          final minute = int.tryParse(minuteStr) ?? 0;
-          parsedTime = DateTime(2000, 1, 1, hour, minute);
-        } else {
-          parsedTime = Date_Utils.parseTime(timeString);
-        }
-      } else {
-        parsedTime = Date_Utils.parseTime(timeString);
-      }
-    } catch (e) {
-      // Fallback to current time if parsing fails
+    // Handles 24-hour (HH:mm) and 12-hour (hh:mm a) formats, including PM
+    final rawTimeValue = data['time'];
+    final timeString = rawTimeValue is String ? rawTimeValue : '';
+    DateTime? parsedTime = Date_Utils.tryParseTimeFlexible(timeString);
+    final hasInvalidTime = parsedTime == null;
+    if (parsedTime == null) {
       parsedTime = DateTime(2000, 1, 1, DateTime.now().hour, DateTime.now().minute);
+      debugPrint('AppointmentData ${doc.id}: invalid time "$rawTimeValue"');
     }
     
     return AppointmentData(
@@ -191,6 +207,11 @@ class AppointmentData {
       originalPatientName: data['originalPatientName'] as String?,
       isPriority: data['isPriority'] as bool? ?? false,
       priorityJoinedAt: (data['priorityJoinedAt'] as Timestamp?)?.toDate(),
+      hasInvalidDate: hasInvalidDate,
+      hasInvalidTime: hasInvalidTime,
+      rawDate: rawDateValue?.toString(),
+      rawTime: rawTimeValue?.toString(),
+      appointmentAt: (data['appointmentAt'] as Timestamp?)?.toDate(),
     );
   }
 
@@ -263,6 +284,12 @@ class AppointmentData {
       originalPatientName: originalPatientName ?? this.originalPatientName,
       isPriority: isPriority ?? this.isPriority,
       priorityJoinedAt: priorityJoinedAt ?? this.priorityJoinedAt,
+      // A copy with a new date/time is valid again
+      hasInvalidDate: date != null ? false : hasInvalidDate,
+      hasInvalidTime: time != null ? false : hasInvalidTime,
+      rawDate: rawDate,
+      rawTime: rawTime,
+      appointmentAt: appointmentAt,
     );
   }
 }

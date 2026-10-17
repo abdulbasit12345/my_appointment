@@ -43,7 +43,8 @@ class _PatientSignupViewState extends State<PatientSignupView> {
 
   Future<void> _signUp() async {
     String name = nameCon.text.trim();
-    String email = emailCon.text.trim();
+    // Lowercase so the PatientData id matches however the email is typed at login
+    String email = emailCon.text.trim().toLowerCase();
     String password = passCon.text.trim();
     String confirmPassword = conPassCon.text.trim();
 
@@ -62,16 +63,28 @@ class _PatientSignupViewState extends State<PatientSignupView> {
         setState(() {
           isLoading=false;
         });
-        await FirebaseFirestore.instance.collection('PatientData').doc(email).set({
-          'name': name,
-          'email': email,
-        });
-        await FirebaseAuth.instance.createUserWithEmailAndPassword(
+        // Create the account first: if it fails (email already used, weak
+        // password) nothing is written to PatientData
+        final credential =
+            await FirebaseAuth.instance.createUserWithEmailAndPassword(
           email: email,
           password: password,
         );
 
         // Storing user data in Firestore
+        try {
+          await FirebaseFirestore.instance
+              .collection('PatientData')
+              .doc(email)
+              .set({
+            'name': name,
+            'email': email,
+          }, SetOptions(merge: true));
+        } catch (e) {
+          // Don't leave an account without a patient record behind
+          await credential.user?.delete();
+          rethrow;
+        }
 
 
         //Utils.snackBar('Sign up successful', context);

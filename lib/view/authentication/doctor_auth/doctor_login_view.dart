@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../../../res/color.dart';
 import '../../../res/components/round_button.dart';
+import '../../../services/user_role_service.dart';
 import '../../../utils/routes/routes_name.dart';
 import '../../../utils/utils.dart';
 import '../../Doctor-views/doctor-home-screen.dart';
@@ -34,6 +35,33 @@ class _DoctorLoginViewState extends State<DoctorLoginView> {
     emailFocusNode.dispose();
     passwordFocusNode.dispose();
     _obscurePassword.dispose();
+  }
+
+  /// Only accounts with a DoctorData record get the doctor screens.
+  /// Returns an error message (after signing out) when access is refused,
+  /// or null when the user is a doctor. Fails closed: if the role can't be
+  /// checked, access is refused.
+  Future<String?> _verifyDoctor(User? user) async {
+    final email = user?.email;
+    String? refusal;
+    if (user == null || email == null) {
+      refusal = 'Could not verify this account. Please try again.';
+    } else {
+      try {
+        if (await UserRoleService.isDoctor(email)) {
+          await UserRoleService.cacheRole(user, UserRole.doctor);
+          return null;
+        }
+        refusal = await UserRoleService.isPatient(email)
+            ? 'This account is registered as a patient. Please use Patient Login.'
+            : 'This account is not registered as a doctor. Please contact the clinic administrator.';
+      } catch (e) {
+        debugPrint('Could not verify doctor role: $e');
+        refusal = 'Could not verify your account. Please check your connection and try again.';
+      }
+    }
+    await FirebaseAuth.instance.signOut();
+    return refusal;
   }
 
   @override
@@ -209,7 +237,19 @@ class _DoctorLoginViewState extends State<DoctorLoginView> {
                               .signInWithEmailAndPassword(
                                   email: emailCon.text.trim(),
                                   password: passCon.text.trim())
-                              .then((onValue) {
+                              .then((onValue) async {
+                            // Patient accounts must not get the doctor screens
+                            final refusal = await _verifyDoctor(onValue.user);
+                            if (!context.mounted) return;
+                            if (refusal != null) {
+                              setState(() {
+                                isLoading = true;
+                              });
+                              Utils.flushBarErrorMessagas(
+                                  refusal,
+                                  context);
+                              return;
+                            }
                             Utils.snackBar('Login Successfully', context);
                             Navigator.pushReplacement(
                                 context,
