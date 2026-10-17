@@ -31,6 +31,33 @@
 
   <title>my_appointment</title>
   <link rel="manifest" href="manifest.json">
+  <script>
+    // Earlier versions of this dashboard installed a service worker that kept
+    // serving the old app from its own cache, so updates didn't show even
+    // after a reload. Once per browser: remove any service worker and its
+    // caches, then reload if anything old was found.
+    (function () {
+      var KEY = 'dashboard-sw-cleanup-v1';
+      try {
+        if (localStorage.getItem(KEY)) return;
+        localStorage.setItem(KEY, '1');
+      } catch (e) {
+        return;
+      }
+      var regsPromise = 'serviceWorker' in navigator
+        ? navigator.serviceWorker.getRegistrations()
+        : Promise.resolve([]);
+      var keysPromise = window.caches ? caches.keys() : Promise.resolve([]);
+      Promise.all([regsPromise, keysPromise]).then(function (found) {
+        var regs = found[0], keys = found[1];
+        if (!regs.length && !keys.length) return;
+        return Promise.all(
+          regs.map(function (r) { return r.unregister(); })
+            .concat(keys.map(function (k) { return caches.delete(k); }))
+        ).then(function () { location.reload(); });
+      }).catch(function () {});
+    })();
+  </script>
 </head>
 <body>
   <script src="flutter_bootstrap.js" async></script>
